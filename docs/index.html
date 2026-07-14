@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>爱记账 · 更新清单</title>
+<style>
+  :root {
+    --accent: #4f46e5;
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #1f2330;
+    --muted: #6b7280;
+    --border: #e6e8f0;
+    --code-bg: #f3f4f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  h1 small { color: var(--muted); font-weight: 400; font-size: 14px; }
+  button {
+    border: 1px solid var(--border); background: var(--card); color: var(--accent);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: .15s;
+  }
+  button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px; box-shadow: 0 4px 24px rgba(20, 20, 50, .04);
+  }
+  .version { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .tag {
+    background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+    padding: 3px 10px; border-radius: 999px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+  .badge.pre { color: #b45309; border-color: #fcd9a8; background: #fff7ed; }
+  .badge.draft { color: #b91c1c; border-color: #fca5a5; background: #fef2f2; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .meta a { color: var(--accent); text-decoration: none; }
+  .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 10px; }
+  #notes { max-height: 420px; overflow: auto; padding-right: 6px; }
+  #notes h1, #notes h2, #notes h3 { margin: 16px 0 8px; line-height: 1.3; }
+  #notes p { margin: 8px 0; }
+  #notes ul, #notes ol { padding-left: 22px; margin: 8px 0; }
+  #notes code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #notes pre { background: var(--code-bg); padding: 14px; border-radius: 10px; overflow: auto; }
+  #notes pre code { background: none; padding: 0; }
+  #notes a { color: var(--accent); }
+  .assets { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .asset {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  }
+  .asset .name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; word-break: break-all; }
+  .asset .size { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .asset a.dl { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .state { text-align: center; color: var(--muted); padding: 30px 0; }
+  .state.error { color: #b91c1c; }
+  .spinner {
+    width: 26px; height: 26px; border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>爱记账 <small>· 更新清单</small></h1>
+    <button id="refresh">检查更新</button>
+  </header>
+
+  <div class="card" id="app">
+    <div class="state" id="state">
+      <div class="spinner"></div>
+      正在读取最新版本…
+    </div>
+  </div>
+
+  <footer>数据来自 GitHub Releases API · 未登录调用限频 60 次/小时/IP</footer>
+</div>
+
+<script>
+  // ====== 改成你的 owner/repo 即可复用 ======
+  const REPO = "yq2580/aijz";
+  // ==========================================
+
+  const API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`;
+  const API_LIST   = `https://api.github.com/repos/${REPO}/releases`;
+
+  const app = document.getElementById("app");
+  const state = document.getElementById("state");
+  document.getElementById("refresh").addEventListener("click", load);
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // 极简 Markdown 渲染（标题/列表/链接/粗斜体/代码块），足够 Release Notes 用
+  function inlineMd(s) {
+    const codes = [];
+    s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+      (m, t, u) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[+i]}</code>`);
+    return s;
+  }
+
+  function renderMd(md) {
+    const lines = escapeHtml(md || "").split("\n");
+    let html = "", inCode = false, codeBuf = [], listType = null, listBuf = [];
+    const flushList = () => {
+      if (listType) {
+        html += `<${listType}>` + listBuf.map(li => `<li>${inlineMd(li)}</li>`).join("") + `</${listType}>`;
+        listType = null; listBuf = [];
+      }
+    };
+    for (const line of lines) {
+      if (/^```/.test(line)) {
+        if (inCode) { html += `<pre><code>${codeBuf.join("\n")}</code></pre>`; inCode = false; codeBuf = []; }
+        else { flushList(); inCode = true; }
+        continue;
+      }
+      if (inCode) { codeBuf.push(line); continue; }
+      let m = line.match(/^(#{1,6})\s+(.*)$/);
+      if (m) { flushList(); const lvl = m[1].length; html += `<h${lvl}>${inlineMd(m[2])}</h${lvl}>`; continue; }
+      m = line.match(/^[-*]\s+(.*)$/);
+      if (m) { if (listType !== "ul") { flushList(); listType = "ul"; } listBuf.push(m[1]); continue; }
+      m = line.match(/^\d+\.\s+(.*)$/);
+      if (m) { if (listType !== "ol") { flushList(); listType = "ol"; } listBuf.push(m[1]); continue; }
+      if (line.trim() === "") { flushList(); continue; }
+      flushList(); html += `<p>${inlineMd(line)}</p>`;
+    }
+    if (inCode) html += `<pre><code>${codeBuf.join("\n")}</code></pre>`;
+    flushList();
+    return html;
+  }
+
+  function fmtSize(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1024 / 1024).toFixed(2) + " MB";
+  }
+
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleString("zh-CN", { dateStyle: "long", timeStyle: "short" }); }
+    catch { return iso; }
+  }
+
+  function render(r) {
+    const badges = [];
+    if (r.prerelease) badges.push(`<span class="badge pre">预发布</span>`);
+    if (r.draft) badges.push(`<span class="badge draft">草稿</span>`);
+
+    const assetsHtml = (r.assets && r.assets.length)
+      ? `<ul class="assets">` + r.assets.map(a => `
+          <li class="asset">
+            <span class="name">${escapeHtml(a.name)}</span>
+            <span style="display:flex;align-items:center;gap:14px;">
+              <span class="size">${fmtSize(a.size)}</span>
+              <a class="dl" href="${a.browser_download_url}" target="_blank" rel="noopener">下载 ↓</a>
+            </span>
+          </li>`).join("") + `</ul>`
+      : `<p class="meta">本次发布没有附带下载文件。</p>`;
+
+    app.innerHTML = `
+      <div class="version">
+        <span class="tag">${escapeHtml(r.tag_name || "—")}</span>
+        ${badges.join("")}
+      </div>
+      <div class="meta">
+        ${escapeHtml(r.name || "")}
+        · 发布于 ${fmtDate(r.published_at)}
+        · <a href="${r.html_url}" target="_blank" rel="noopener">在 GitHub 查看</a>
+      </div>
+      <div class="section-title">更新说明</div>
+      <div id="notes">${renderMd(r.body)}</div>
+      <div class="section-title">下载</div>
+      ${assetsHtml}
+    `;
+  }
+
+  async function load() {
+    app.innerHTML = `<div class="state"><div class="spinner"></div>正在读取最新版本…</div>`;
+    try {
+      let res = await fetch(API_LATEST, { headers: { "Accept": "application/vnd.github+json" } });
+      if (res.status === 404) {
+        // 没有「正式最新版」时，退回取发布列表第一条（可能只有预发布/草稿）
+        res = await fetch(API_LIST, { headers: { "Accept": "application/vnd.github+json" } });
+        if (!res.ok) throw new Error("list:" + res.status);
+        const list = await res.json();
+        if (!Array.isArray(list) || !list.length) throw new Error("norelease");
+        render(list[0]);
+        return;
+      }
+      if (res.status === 403) throw new Error("rate");
+      if (!res.ok) throw new Error("http:" + res.status);
+      render(await res.json());
+    } catch (e) {
+      let msg = "读取失败，请稍后重试。";
+      if (e.message === "norelease") msg = "该仓库还没有发布任何版本，请先在 GitHub 上创建一个 Release。";
+      else if (e.message === "rate") msg = "API 调用过于频繁（未登录限 60 次/小时），请稍后再试或配置 Token。";
+      app.innerHTML = `<div class="state error">⚠️ ${msg}</div>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
